@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"lruwsr/lru"
+	"lruwsr/lruwsr"
 	"lruwsr/simulator"
 	"os"
 	"strconv"
@@ -27,13 +28,17 @@ func main() {
 	)
 
 	if len(os.Args) < 4 {
-		fmt.Println("program [algorithm(LIRS|LRU|LFU)] [file] [trace size]...")
+		fmt.Println("program [algorithm(LIRS|LRU|LRUWSR)] [file] [trace size]...")
 		os.Exit(1)
 	}
 
 	algorithm = os.Args[1]
 
-	checkFilepath(os.Args[2], fs, err)
+	filePath = os.Args[2]
+	if fs, err = os.Stat(filePath); os.IsNotExist(err) {
+		fmt.Printf("%v does not exists\n", filePath)
+		os.Exit(1)
+	}
 
 	cacheList, err = validateTraceSize(os.Args[3:])
 	if err != nil {
@@ -56,13 +61,12 @@ func main() {
 
 	for _, cache := range cacheList {
 		switch strings.ToLower(algorithm) {
-		case "lirs":
-			fmt.Println("test error")
+		// case "lirs":
+		// simulator = lirs.NewLIRS(cache, 1)
 		case "lru":
-			// fmt.Println(cache)
 			simulator = lru.NewLRU(cache)
-		// case "lfu":
-		// simulator = lfu.NewLFU(cache)
+		case "lruwsr":
+			simulator = lruwsr.NewLRUWSR(cache)
 		default:
 			log.Fatal("algorithm not supported")
 		}
@@ -79,13 +83,6 @@ func main() {
 		simulator.PrintToFile(out, timeStart)
 	}
 	fmt.Println("Done")
-}
-
-func checkFilepath(filePath string, fs os.FileInfo, err error) {
-	if fs, err = os.Stat(filePath); os.IsNotExist(err) {
-		fmt.Printf("%v does not exists\n", filePath)
-		os.Exit(1)
-	}
 }
 
 func validateTraceSize(tracesize []string) (sizeList []int, err error) {

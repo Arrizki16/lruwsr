@@ -13,23 +13,23 @@ import (
 
 type (
 	Node struct {
-		lba        int
-		lastaccess int
-		op         string
-		elem       *list.Element
+		lba        int           // menyimpan alamat dari data yang disimpan dalam cache
+		lastaccess int           // menyimpan waktu terakhir data dalam cache diakses
+		op         string        // menyimpan operasi yang dilakukan pada data yang disimpan dalam cache
+		elem       *list.Element // menyimpan posisi dari data yang disimpan dalam cache dalam linked list
 	}
 
 	LRU struct {
-		maxlen      int
-		available   int
-		totalaccess int
-		hit         int
-		miss        int
-		pagefault   int
-		write       int
+		maxlen      int // menyimpan ukuran maksimum dari cache
+		available   int // menyimpan ukuran cache yang masih tersedia
+		totalaccess int // menyimpan jumlah total akses yang dilakukan pada cache
+		hit         int // persentase akses ke cache yang berhasil ditemukan di dalam cache
+		miss        int // kebalikan dari hit
+		pagefault   int // terjadi ketika cache sudah penuh dan harus mengosongkan cache untuk menambahkan data baru.
+		write       int // menyimpan jumlah operasi write yang dilakukan pada cache
 
-		tlba    *llrb.LLRB
-		lrulist *list.List
+		tlba    *llrb.LLRB // menyimpan pointer ke LLRB (Left-Leaning Red-Black Tree) yang digunakan untuk menyimpan key-value dari data yang disimpan dalam cache
+		lrulist *list.List // menyimpan pointer ke linked list yang digunakan untuk menyimpan posisi dari data yang disimpan dalam cache
 	}
 
 	NodeLba Node
@@ -55,38 +55,35 @@ func NewLRU(cacheSize int) *LRU {
 
 func (lru *LRU) put(data *NodeLba) (exists bool) {
 	var el *list.Element
-	kk := new(NodeLba)
+	kk := new(NodeLba) // untuk menyimpan data yang tidak ada di dalam cache
 
-	node := lru.tlba.Get((*NodeLba)(data))
+	node := lru.tlba.Get((*NodeLba)(data)) // library buat dapetin llrb.Item, jika data belum ada di cache maka nilai nil
 	if node != nil {
 		lru.hit++
-		dd := node.(*NodeLba) // shortcut saja
+		dd := node.(*NodeLba)
 		if data.op == "W" {
 			lru.write++
 		}
 		lru.lrulist.Remove(dd.elem)
 		el = lru.lrulist.PushFront(dd.elem.Value)
-		dd.elem = el // update elem
+		dd.elem = el
 		return true
-	} else { // not exist
+	} else {
 		lru.miss++
 		lru.write++
 		if lru.available > 0 {
 			lru.available--
 			el = lru.lrulist.PushFront(data)
-			lru.tlba.InsertNoReplace(data)
-			data.elem = el
+			lru.tlba.InsertNoReplace(data) // no replace karena datanya tidak ada
+			data.elem = el                 // digunakan untuk menyimpan pointer ke elemen baru dalam linked list ke dalam struct data,
+			//sehingga dapat digunakan untuk mengupdate posisi data dalam linked list nantinya.
 		} else {
 			lru.pagefault++
-
-			// delete dulu
 			el = lru.lrulist.Back()
 			lba := el.Value.(*NodeLba).lba
 			kk.lba = lba
-			lru.tlba.Delete(kk) // hapus dah
+			lru.tlba.Delete(kk)
 			lru.lrulist.Remove(el)
-
-			// masukkan lagi
 			el = lru.lrulist.PushFront(data)
 			data.elem = el
 			lru.tlba.InsertNoReplace(data)
@@ -98,8 +95,9 @@ func (lru *LRU) put(data *NodeLba) (exists bool) {
 func (lru *LRU) Get(trace simulator.Trace) (err error) {
 	lru.totalaccess++
 	obj := new(NodeLba)
-	obj.lba = trace.Addr
-	obj.op = trace.Op
+	// {0, 'W'} -> address, operation
+	obj.lba = trace.Addr // mendapatkan address dari trace
+	obj.op = trace.Op    // mendapatkan operation dari trace
 	obj.lastaccess = lru.totalaccess
 
 	lru.put(obj)
@@ -118,6 +116,6 @@ func (lru LRU) PrintToFile(file *os.File, timeStart time.Time) (err error) {
 	file.WriteString(fmt.Sprintf("list size : %d\n", lru.lrulist.Len()))
 
 	file.WriteString(fmt.Sprintf("!LRU|%d|%d|%d\n", lru.maxlen, lru.hit, lru.write))
-
+	file.WriteString(fmt.Sprintf("total time: %f\n\n", time.Since(timeStart).Seconds()))
 	return nil
 }

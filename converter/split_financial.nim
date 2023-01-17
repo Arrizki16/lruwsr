@@ -73,4 +73,4 @@ close(wr)
 #for i,j in cbz:
 #  stderr.write i ,":", j, "\n"
 
-echo "not divisible by ", BSIZE, ":", nondivide
+#echo "not divisible by ", BSIZE, ":", nondivide
