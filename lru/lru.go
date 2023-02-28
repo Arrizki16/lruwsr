@@ -1,121 +1,117 @@
 package lru
 
 import (
-	"container/list"
 	"fmt"
 	"os"
 	"time"
 
 	"lruwsr/simulator"
 
-	"github.com/petar/GoLLRB/llrb"
+	"github.com/secnot/orderedmap"
 )
 
 type (
 	Node struct {
-		lba        int           // menyimpan alamat dari data yang disimpan dalam cache
-		lastaccess int           // menyimpan waktu terakhir data dalam cache diakses
-		op         string        // menyimpan operasi yang dilakukan pada data yang disimpan dalam cache
-		elem       *list.Element // menyimpan posisi dari data yang disimpan dalam cache dalam linked list
+		lba int
+		op  string
 	}
 
 	LRU struct {
-		maxlen      int // menyimpan ukuran maksimum dari cache
-		available   int // menyimpan ukuran cache yang masih tersedia
-		totalaccess int // menyimpan jumlah total akses yang dilakukan pada cache
-		hit         int // persentase akses ke cache yang berhasil ditemukan di dalam cache
-		miss        int // kebalikan dari hit
-		pagefault   int // terjadi ketika cache sudah penuh dan harus mengosongkan cache untuk menambahkan data baru.
-		write       int // menyimpan jumlah operasi write yang dilakukan pada cache
+		maxlen     int
+		available  int
+		hit        int
+		miss       int
+		pagefault  int
+		writeCount int
+		readCount  int
+		writeCost  float32
+		readCost   float32
+		eraseCost  float32
 
-		tlba    *llrb.LLRB // menyimpan pointer ke LLRB (Left-Leaning Red-Black Tree) yang digunakan untuk menyimpan key-value dari data yang disimpan dalam cache
-		lrulist *list.List // menyimpan pointer ke linked list yang digunakan untuk menyimpan posisi dari data yang disimpan dalam cache
+		orderedList *orderedmap.OrderedMap
 	}
-
-	NodeLba Node
 )
 
-func (x *NodeLba) Less(than llrb.Item) bool {
-	return x.lba < than.(*NodeLba).lba
-}
-
-func NewLRU(cacheSize int) *LRU {
+func NewLRU(value int) *LRU {
 	lru := &LRU{
-		maxlen:      cacheSize,
-		available:   cacheSize,
-		totalaccess: 0,
+		maxlen:      value,
+		available:   value,
 		hit:         0,
 		miss:        0,
 		pagefault:   0,
-		lrulist:     list.New(),
-		tlba:        llrb.New(),
+		writeCount:  0,
+		readCount:   0,
+		writeCost:   0.25,
+		readCost:    0.025,
+		eraseCost:   2,
+		orderedList: orderedmap.NewOrderedMap(),
 	}
 	return lru
 }
 
-func (lru *LRU) put(data *NodeLba) (exists bool) {
-	var el *list.Element
-	kk := new(NodeLba) // untuk menyimpan data yang tidak ada di dalam cache
+func (lru *LRU) put(data *Node) (exists bool) {
+	if _, _, ok := lru.orderedList.GetLast(); !ok {
+		fmt.Println("LRU cache is empty")
+	}
 
-	node := lru.tlba.Get((*NodeLba)(data)) // library buat dapetin llrb.Item, jika data belum ada di cache maka nilai nil
-	if node != nil {
+	if _, ok := lru.orderedList.Get(data.lba); ok {
 		lru.hit++
-		dd := node.(*NodeLba)
-		if data.op == "W" {
-			lru.write++
+
+		if ok := lru.orderedList.MoveLast(data.lba); !ok {
+			fmt.Printf("Failed to move LBA %d to MRU position\n", data.lba)
 		}
-		lru.lrulist.Remove(dd.elem)
-		el = lru.lrulist.PushFront(dd.elem.Value)
-		dd.elem = el
 		return true
 	} else {
 		lru.miss++
-		lru.write++
 		if lru.available > 0 {
+			if data.op == "R" {
+				lru.readCount++
+			}
 			lru.available--
-			el = lru.lrulist.PushFront(data)
-			lru.tlba.InsertNoReplace(data) // no replace karena datanya tidak ada
-			data.elem = el                 // digunakan untuk menyimpan pointer ke elemen baru dalam linked list ke dalam struct data,
-			//sehingga dapat digunakan untuk mengupdate posisi data dalam linked list nantinya.
+			lru.orderedList.Set(data.lba, data.op)
 		} else {
 			lru.pagefault++
-			el = lru.lrulist.Back()
-			lba := el.Value.(*NodeLba).lba
-			kk.lba = lba
-			lru.tlba.Delete(kk)
-			lru.lrulist.Remove(el)
-			el = lru.lrulist.PushFront(data)
-			data.elem = el
-			lru.tlba.InsertNoReplace(data)
+			if data.op == "R" {
+				lru.readCount++
+			}
+
+			if firstKey, firstValue, ok := lru.orderedList.GetFirst(); ok {
+				lruLba := &Node{lba: firstKey.(int), op: firstValue.(string)}
+				lruOp := lruLba.op
+				// fmt.Println("ini adalah data terkahir : ", lruLba, lruOp, firstKey, firstValue)
+
+				if lruOp == "W" {
+					lru.writeCount++
+				}
+				lru.orderedList.Delete(firstKey)
+			} else {
+				fmt.Println("No elements found to remove")
+			}
+
+			lru.orderedList.Set(data.lba, data.op)
 		}
 		return false
 	}
 }
 
 func (lru *LRU) Get(trace simulator.Trace) (err error) {
-	lru.totalaccess++
-	obj := new(NodeLba)
-	// {0, 'W'} -> address, operation
-	obj.lba = trace.Addr // mendapatkan address dari trace
-	obj.op = trace.Op    // mendapatkan operation dari trace
-	obj.lastaccess = lru.totalaccess
-
+	obj := new(Node)
+	obj.lba = trace.Addr
+	obj.op = trace.Op
 	lru.put(obj)
 
 	return nil
 }
 
 func (lru LRU) PrintToFile(file *os.File, timeStart time.Time) (err error) {
-	file.WriteString(fmt.Sprintf("NUM ACCESS: %d\n", lru.totalaccess))
 	file.WriteString(fmt.Sprintf("cache size: %d\n", lru.maxlen))
 	file.WriteString(fmt.Sprintf("cache hit: %d\n", lru.hit))
 	file.WriteString(fmt.Sprintf("cache miss: %d\n", lru.miss))
-	file.WriteString(fmt.Sprintf("ssd write: %d\n", lru.write))
-	file.WriteString(fmt.Sprintf("hit ratio : %8.4f\n", (float64(lru.hit)/float64(lru.totalaccess))*100))
-	file.WriteString(fmt.Sprintf("tlba size : %d\n", lru.tlba.Len()))
-	file.WriteString(fmt.Sprintf("list size : %d\n", lru.lrulist.Len()))
-
-	file.WriteString(fmt.Sprintf("!LRU|%d|%d|%d\n", lru.maxlen, lru.hit, lru.write))
-	file.WriteString(fmt.Sprintf("total time: %f\n\n", time.Since(timeStart).Seconds()))
+	file.WriteString(fmt.Sprintf("write count: %d\n", lru.writeCount))
+	file.WriteString(fmt.Sprintf("read count: %d\n", lru.readCount))
+	file.WriteString(fmt.Sprintf("hit ratio: %8.4f\n", (float64(lru.hit)/float64(lru.hit+lru.miss))*100))
+	// file.WriteString(fmt.Sprintf("!LRU|%d|%d|%d\n", lru.maxlen, lru.hit, lru.writeCount))
+	// file.WriteString(fmt.Sprintf("runtime: %f\n", time.Since(timeStart).Seconds()))
+	file.WriteString(fmt.Sprintf("runtime: %8.4f\n\n", float32(lru.readCount)*lru.readCost+float32(lru.writeCount)*(lru.writeCost+lru.eraseCost)))
 	return nil
 }

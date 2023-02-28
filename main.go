@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"lruwsr/cflru"
 	"lruwsr/lru"
 	"lruwsr/lruwsr"
 	"lruwsr/simulator"
@@ -61,10 +62,12 @@ func main() {
 
 	for _, cache := range cacheList {
 		switch strings.ToLower(algorithm) {
-		// case "lirs":
-		// simulator = lirs.NewLIRS(cache, 1)
+		case "cflru":
+			simulator = cflru.NewCFLRU(cache)
 		case "lru":
 			simulator = lru.NewLRU(cache)
+		// case "lruom":
+		// 	simulator = lruom.NewLRUWSR(cache)
 		case "lruwsr":
 			simulator = lruwsr.NewLRUWSR(cache)
 		default:
