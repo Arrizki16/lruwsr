@@ -1,161 +1,159 @@
 package lruwsr
 
+/*
+getLast : mendapatkan elemen yang baru masuk
+*/
+
 import (
-	"container/list"
 	"fmt"
 	"os"
 	"time"
 
 	"lruwsr/simulator"
 
-	"github.com/petar/GoLLRB/llrb"
+	"github.com/secnot/orderedmap"
 )
 
 type (
 	Node struct {
-		lba        int
-		lastaccess int
-		op         string
-		writeSeq   int // menyimpan jumlah write pada sebuah page yang digunakan untuk mengurutkan page di dalam cache berdasarkan jumlah write
-		elem       *list.Element
+		lba         int
+		op          string
+		accessCount int
+		dirtypages  bool
 	}
 
 	LRU struct {
-		maxlen      int
-		available   int
-		totalaccess int
-		hit         int
-		miss        int
-		pagefault   int
-		write       int
+		maxlen       int
+		available    int
+		hit          int
+		miss         int
+		pagefault    int
+		writeCount   int
+		readCount    int
+		writeCost    float32
+		readCost     float32
+		eraseCost    float32
+		coldTreshold int
 
-		tlba    *llrb.LLRB
-		lrulist *list.List
+		orderedList *orderedmap.OrderedMap
 	}
-
-	NodeLba Node
 )
 
-func (x *NodeLba) Less(than llrb.Item) bool {
-	return x.lba < than.(*NodeLba).lba
-}
-
-func NewLRUWSR(cacheSize int) *LRU {
+func NewLRUWSR(value int) *LRU {
 	lru := &LRU{
-		maxlen:      cacheSize,
-		available:   cacheSize,
-		totalaccess: 0,
-		hit:         0,
-		miss:        0,
-		pagefault:   0,
-		lrulist:     list.New(),
-		tlba:        llrb.New(),
+		maxlen:       value,
+		available:    value,
+		hit:          0,
+		miss:         0,
+		pagefault:    0,
+		writeCount:   0,
+		readCount:    0,
+		writeCost:    0.25,
+		readCost:     0.025,
+		eraseCost:    2,
+		coldTreshold: 1,
+		orderedList:  orderedmap.NewOrderedMap(),
 	}
 	return lru
 }
 
-// func (lru *LRU) reorder() {
-// 	var el *list.Element
-// 	for el = lru.lrulist.Front(); el != nil; el = el.Next() {
-// 		node := el.Value.(*NodeLba)
-// 		el := lru.lrulist.PushFront(node)
-// 		node.elem = el
-// 		lru.lrulist.MoveToFront(el)
-// 	}
-// }
-
-func (lru *LRU) reorder() {
-	var el *list.Element
-	var writeSeqOne []*NodeLba
-	for el = lru.lrulist.Front(); el != nil; el = el.Next() {
-		node := el.Value.(*NodeLba)
-		if node.writeSeq == 1 {
-			writeSeqOne = append(writeSeqOne, node)
-			lru.lrulist.Remove(el)
+func (lru *LRU) reorder(data *Node) {
+	iter := lru.orderedList.Iter()
+	for key, value, ok := iter.Next(); ok; key, value, ok = iter.Next() {
+		lruLba := value.(*Node)
+		if !lruLba.dirtypages {
+			continue
+		} else {
+			if lruLba.accessCount < lru.coldTreshold {
+				// fmt.Println("deleted dirty pages : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
+				lru.orderedList.Delete(key)
+			} else if lruLba.accessCount >= lru.coldTreshold {
+				lruLba.accessCount--
+				// fmt.Println("moved dirty pages : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
+				lru.orderedList.MoveLast(key)
+			}
+			return
 		}
-	}
-	for _, node := range writeSeqOne {
-		el := lru.lrulist.PushFront(node)
-		node.elem = el
 	}
 }
 
-func (lru *LRU) put(data *NodeLba) (exists bool) {
-	var el *list.Element
-	kk := new(NodeLba)
+func (lru *LRU) put(data *Node) (exists bool) {
+	if _, _, ok := lru.orderedList.GetLast(); !ok {
+		fmt.Println("LRU cache is empty")
+	}
 
-	node := lru.tlba.Get((*NodeLba)(data))
-	if node != nil {
+	if value, ok := lru.orderedList.Get(data.lba); ok {
 		lru.hit++
-		dd := node.(*NodeLba) // shortcut saja
-		if data.op == "W" {   // di lruwsr perlu ditulis jumlah operasi write
-			lru.write++
-			dd.writeSeq++
-			lru.reorder()
+		lruLba := value.(*Node)
+		if lruLba.op == "W" {
+			if lruLba.accessCount == 0 {
+				lruLba.accessCount = 1
+			} else if lruLba.accessCount < lru.maxlen {
+				lruLba.accessCount++
+			}
 		}
-		lru.lrulist.Remove(dd.elem)
-		el = lru.lrulist.PushFront(dd.elem.Value)
-		dd.elem = el // update elem
 		return true
-	} else { // not exist
+	} else {
 		lru.miss++
+		lru.readCount++
 		if data.op == "W" {
-			lru.write++
-			data.writeSeq = 1
+			data.dirtypages = true
+			data.accessCount = 1
 		}
+
+		node := &Node{
+			op:          data.op,
+			dirtypages:  data.dirtypages,
+			accessCount: data.accessCount,
+		}
+
 		if lru.available > 0 {
 			lru.available--
-			el = lru.lrulist.PushFront(data)
-			lru.tlba.InsertNoReplace(data)
-			data.elem = el
+			lru.orderedList.Set(data.lba, node)
+			/*
+				test
+			*/
+			// if lastKey, lastValue, ok := lru.orderedList.GetLast(); ok {
+			// 	lruLba := lastValue.(*Node)
+			// 	fmt.Println("miss : ", lastKey, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
+			// }
 		} else {
 			lru.pagefault++
+			if _, firstValue, ok := lru.orderedList.GetFirst(); ok {
+				lruLba := firstValue.(*Node)
+				if !lruLba.dirtypages {
+					// fmt.Println("deleted clean pages : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
+					lru.orderedList.PopFirst()
+				} else {
+					lru.writeCount++
+					lru.reorder(data)
+				}
+			} else {
+				fmt.Println("No elements found to remove")
+			}
 
-			// delete dulu
-			el = lru.lrulist.Back()
-			lba := el.Value.(*NodeLba).lba
-			kk.lba = lba
-			lru.tlba.Delete(kk) // hapus dah
-			lru.lrulist.Remove(el)
-
-			// masukkan lagi
-			el = lru.lrulist.PushFront(data)
-			data.elem = el
-			lru.tlba.InsertNoReplace(data)
+			lru.orderedList.Set(data.lba, node)
 		}
 		return false
 	}
 }
 
 func (lru *LRU) Get(trace simulator.Trace) (err error) {
-	lru.totalaccess++
-	obj := new(NodeLba)
+	obj := new(Node)
 	obj.lba = trace.Addr
 	obj.op = trace.Op
-	obj.lastaccess = lru.totalaccess
-
 	lru.put(obj)
 
 	return nil
 }
 
 func (lru LRU) PrintToFile(file *os.File, timeStart time.Time) (err error) {
-	// file.WriteString(fmt.Sprintf("NUM ACCESS: %d\n", lru.totalaccess))
-	// file.WriteString(fmt.Sprintf("cache size: %d\n", lru.maxlen))
-	// file.WriteString(fmt.Sprintf("cache hit: %d\n", lru.hit))
-	// file.WriteString(fmt.Sprintf("cache miss: %d\n", lru.miss))
-	// file.WriteString(fmt.Sprintf("cache page fault: %d\n", lru.pagefault))
-	file.WriteString(fmt.Sprintf("NUM ACCESS: %d\n", lru.totalaccess))
 	file.WriteString(fmt.Sprintf("cache size: %d\n", lru.maxlen))
 	file.WriteString(fmt.Sprintf("cache hit: %d\n", lru.hit))
 	file.WriteString(fmt.Sprintf("cache miss: %d\n", lru.miss))
-	file.WriteString(fmt.Sprintf("ssd write: %d\n", lru.write))
-	file.WriteString(fmt.Sprintf("hit ratio : %8.4f\n", (float64(lru.hit)/float64(lru.totalaccess))*100))
-	file.WriteString(fmt.Sprintf("tlba size : %d\n", lru.tlba.Len()))
-	file.WriteString(fmt.Sprintf("list size : %d\n", lru.lrulist.Len()))
-
-	file.WriteString(fmt.Sprintf("!LRUWSR|%d|%d|%d\n", lru.maxlen, lru.hit, lru.write))
-	file.WriteString(fmt.Sprintf("total time: %f\n\n", time.Since(timeStart).Seconds()))
-
+	file.WriteString(fmt.Sprintf("write count: %d\n", lru.writeCount))
+	file.WriteString(fmt.Sprintf("read count: %d\n", lru.readCount))
+	file.WriteString(fmt.Sprintf("hit ratio: %8.4f\n", (float64(lru.hit)/float64(lru.hit+lru.miss))*100))
+	file.WriteString(fmt.Sprintf("runtime: %8.4f\n\n", float32(lru.readCount)*lru.readCost+float32(lru.writeCount)*(lru.writeCost+lru.eraseCost)))
 	return nil
 }
