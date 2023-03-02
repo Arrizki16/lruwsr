@@ -22,7 +22,7 @@ type (
 		dirtypages  bool
 	}
 
-	LRU struct {
+	LRUWSR struct {
 		maxlen       int
 		available    int
 		hit          int
@@ -39,8 +39,8 @@ type (
 	}
 )
 
-func NewLRUWSR(value int) *LRU {
-	lru := &LRU{
+func NewLRUWSR(value int) *LRUWSR {
+	lru := &LRUWSR{
 		maxlen:       value,
 		available:    value,
 		hit:          0,
@@ -57,7 +57,7 @@ func NewLRUWSR(value int) *LRU {
 	return lru
 }
 
-func (lru *LRU) reorder(data *Node) {
+func (lru *LRUWSR) reorder(data *Node) {
 	iter := lru.orderedList.Iter()
 	for key, value, ok := iter.Next(); ok; key, value, ok = iter.Next() {
 		lruLba := value.(*Node)
@@ -65,11 +65,9 @@ func (lru *LRU) reorder(data *Node) {
 			continue
 		} else {
 			if lruLba.accessCount < lru.coldTreshold {
-				// fmt.Println("deleted dirty pages : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
 				lru.orderedList.Delete(key)
 			} else if lruLba.accessCount >= lru.coldTreshold {
 				lruLba.accessCount--
-				// fmt.Println("moved dirty pages : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
 				lru.orderedList.MoveLast(key)
 			}
 			return
@@ -77,7 +75,7 @@ func (lru *LRU) reorder(data *Node) {
 	}
 }
 
-func (lru *LRU) put(data *Node) (exists bool) {
+func (lru *LRUWSR) put(data *Node) (exists bool) {
 	if _, _, ok := lru.orderedList.GetLast(); !ok {
 		fmt.Println("LRU cache is empty")
 	}
@@ -91,6 +89,10 @@ func (lru *LRU) put(data *Node) (exists bool) {
 			} else if lruLba.accessCount < lru.maxlen {
 				lruLba.accessCount++
 			}
+		}
+
+		if ok := lru.orderedList.MoveLast(data.lba); !ok {
+			fmt.Printf("Failed to move LBA %d to MRU position\n", data.lba)
 		}
 		return true
 	} else {
@@ -110,19 +112,11 @@ func (lru *LRU) put(data *Node) (exists bool) {
 		if lru.available > 0 {
 			lru.available--
 			lru.orderedList.Set(data.lba, node)
-			/*
-				test
-			*/
-			// if lastKey, lastValue, ok := lru.orderedList.GetLast(); ok {
-			// 	lruLba := lastValue.(*Node)
-			// 	fmt.Println("miss : ", lastKey, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
-			// }
 		} else {
 			lru.pagefault++
 			if _, firstValue, ok := lru.orderedList.GetFirst(); ok {
 				lruLba := firstValue.(*Node)
 				if !lruLba.dirtypages {
-					// fmt.Println("deleted clean pages : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
 					lru.orderedList.PopFirst()
 				} else {
 					lru.writeCount++
@@ -138,7 +132,7 @@ func (lru *LRU) put(data *Node) (exists bool) {
 	}
 }
 
-func (lru *LRU) Get(trace simulator.Trace) (err error) {
+func (lru *LRUWSR) Get(trace simulator.Trace) (err error) {
 	obj := new(Node)
 	obj.lba = trace.Addr
 	obj.op = trace.Op
@@ -147,7 +141,7 @@ func (lru *LRU) Get(trace simulator.Trace) (err error) {
 	return nil
 }
 
-func (lru LRU) PrintToFile(file *os.File, timeStart time.Time) (err error) {
+func (lru LRUWSR) PrintToFile(file *os.File, timeStart time.Time) (err error) {
 	file.WriteString(fmt.Sprintf("cache size: %d\n", lru.maxlen))
 	file.WriteString(fmt.Sprintf("cache hit: %d\n", lru.hit))
 	file.WriteString(fmt.Sprintf("cache miss: %d\n", lru.miss))
