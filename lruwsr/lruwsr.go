@@ -58,19 +58,26 @@ func NewLRUWSR(value int) *LRUWSR {
 }
 
 func (lru *LRUWSR) reorder(data *Node) {
-	iter := lru.orderedList.Iter()
-	for key, value, ok := iter.Next(); ok; key, value, ok = iter.Next() {
-		lruLba := value.(*Node)
-		if !lruLba.dirtypages {
-			continue
-		} else {
-			if lruLba.accessCount < lru.coldTreshold {
+	for {
+		iter := lru.orderedList.Iter()
+		for key, value, ok := iter.Next(); ok; key, value, ok = iter.Next() {
+			lruLba := value.(*Node)
+			if !lruLba.dirtypages {
+				// fmt.Println("dihapus [clean pages] : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
 				lru.orderedList.Delete(key)
-			} else if lruLba.accessCount >= lru.coldTreshold {
-				lruLba.accessCount--
-				lru.orderedList.MoveLast(key)
+				return
+			} else {
+				if lruLba.accessCount < lru.coldTreshold {
+					// fmt.Println("dihapus [dirty pages] : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
+					lru.writeCount++
+					lru.orderedList.Delete(key)
+					return
+				} else if lruLba.accessCount >= lru.coldTreshold {
+					// fmt.Println("movelast : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
+					lruLba.accessCount--
+					lru.orderedList.MoveLast(key)
+				}
 			}
-			return
 		}
 	}
 }
@@ -91,6 +98,7 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 			}
 		}
 
+		// fmt.Println("ketemu ", data.lba, lruLba.accessCount)
 		if ok := lru.orderedList.MoveLast(data.lba); !ok {
 			fmt.Printf("Failed to move LBA %d to MRU position\n", data.lba)
 		}
@@ -112,20 +120,22 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 		if lru.available > 0 {
 			lru.available--
 			lru.orderedList.Set(data.lba, node)
+			// fmt.Println("masuk : ", data.lba)
 		} else {
 			lru.pagefault++
 			if _, firstValue, ok := lru.orderedList.GetFirst(); ok {
 				lruLba := firstValue.(*Node)
 				if !lruLba.dirtypages {
+					// fmt.Println("dihapus [clean pages] : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
 					lru.orderedList.PopFirst()
 				} else {
-					lru.writeCount++
 					lru.reorder(data)
 				}
 			} else {
 				fmt.Println("No elements found to remove")
 			}
 
+			// fmt.Println("masuk udah full : ", data.lba)
 			lru.orderedList.Set(data.lba, node)
 		}
 		return false
