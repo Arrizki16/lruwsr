@@ -54,7 +54,7 @@ func main() {
 
 	outPath = fmt.Sprintf("%v_%v_%v.txt", time.Now().Unix(), algorithm, fs.Name())
 
-	out, err = os.Create(outPath)
+	out, err = os.Create("output" + "/" + outPath)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -66,8 +66,6 @@ func main() {
 			simulator = cflru.NewCFLRU(cache)
 		case "lru":
 			simulator = lru.NewLRU(cache)
-		// case "lruom":
-		// 	simulator = lruom.NewLRUWSR(cache)
 		case "lruwsr":
 			simulator = lruwsr.NewLRUWSR(cache)
 		default:
