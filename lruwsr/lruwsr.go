@@ -23,36 +23,39 @@ type (
 	}
 
 	LRUWSR struct {
-		maxlen       int
-		available    int
-		hit          int
-		miss         int
-		pagefault    int
-		writeCount   int
-		readCount    int
-		writeCost    float32
-		readCost     float32
-		eraseCost    float32
-		coldTreshold int
-
-		orderedList *orderedmap.OrderedMap
+		maxlen         int
+		available      int
+		hit            int
+		miss           int
+		pagefault      int
+		writeCount     int
+		readCount      int
+		writeCost      float32
+		readCost       float32
+		eraseCost      float32
+		coldTreshold   int
+		writeOperation int
+		decayPeriod    int
+		orderedList    *orderedmap.OrderedMap
 	}
 )
 
 func NewLRUWSR(value int) *LRUWSR {
 	lru := &LRUWSR{
-		maxlen:       value,
-		available:    value,
-		hit:          0,
-		miss:         0,
-		pagefault:    0,
-		writeCount:   0,
-		readCount:    0,
-		writeCost:    0.25,
-		readCost:     0.025,
-		eraseCost:    2,
-		coldTreshold: 1,
-		orderedList:  orderedmap.NewOrderedMap(),
+		maxlen:         value,
+		available:      value,
+		hit:            0,
+		miss:           0,
+		pagefault:      0,
+		writeCount:     0,
+		readCount:      0,
+		writeCost:      0.25,
+		readCost:       0.025,
+		eraseCost:      2,
+		coldTreshold:   1,
+		writeOperation: 0,
+		decayPeriod:    50000,
+		orderedList:    orderedmap.NewOrderedMap(),
 	}
 	return lru
 }
@@ -82,6 +85,19 @@ func (lru *LRUWSR) reorder(data *Node) {
 	}
 }
 
+func (lru *LRUWSR) decay(data *Node) {
+	// fmt.Println("write operation : ", lru.writeOperation)
+	iter := lru.orderedList.IterReverse()
+	for _, value, ok := iter.Next(); ok; _, value, ok = iter.Next() {
+		lruLba := value.(*Node)
+		// fmt.Println("print decay periods [Before]: ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
+		lruLba.accessCount = lruLba.accessCount / 2
+		// fmt.Println("print decay periods [After]: ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
+	}
+
+	lru.writeOperation = 0
+}
+
 func (lru *LRUWSR) put(data *Node) (exists bool) {
 	if _, _, ok := lru.orderedList.GetLast(); !ok {
 		fmt.Println("LRU cache is empty")
@@ -91,6 +107,7 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 		lru.hit++
 		lruLba := value.(*Node)
 		if lruLba.op == "W" {
+			lru.writeOperation++
 			if lruLba.accessCount == 0 {
 				lruLba.accessCount = 1
 			} else if lruLba.accessCount < lru.maxlen {
@@ -102,6 +119,11 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 		if ok := lru.orderedList.MoveLast(data.lba); !ok {
 			fmt.Printf("Failed to move LBA %d to MRU position\n", data.lba)
 		}
+
+		if lru.writeOperation == lru.decayPeriod {
+			lru.decay(data)
+		}
+
 		return true
 	} else {
 		lru.miss++
@@ -109,6 +131,7 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 		if data.op == "W" {
 			data.dirtypages = true
 			data.accessCount = 1
+			lru.writeOperation++
 		}
 
 		node := &Node{
@@ -120,6 +143,9 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 		if lru.available > 0 {
 			lru.available--
 			lru.orderedList.Set(data.lba, node)
+			if lru.writeOperation == lru.decayPeriod {
+				lru.decay(data)
+			}
 			// fmt.Println("masuk : ", data.lba)
 		} else {
 			lru.pagefault++
@@ -137,6 +163,9 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 
 			// fmt.Println("masuk udah full : ", data.lba)
 			lru.orderedList.Set(data.lba, node)
+			if lru.writeOperation == lru.decayPeriod {
+				lru.decay(data)
+			}
 		}
 		return false
 	}
@@ -160,5 +189,6 @@ func (lru LRUWSR) PrintToFile(file *os.File, timeStart time.Time) (err error) {
 	file.WriteString(fmt.Sprintf("hit ratio: %8.4f\n", (float64(lru.hit)/float64(lru.hit+lru.miss))*100))
 	file.WriteString(fmt.Sprintf("runtime: %8.4f\n", float32(lru.readCount)*lru.readCost+float32(lru.writeCount)*(lru.writeCost+lru.eraseCost)))
 	file.WriteString(fmt.Sprintf("time execution: %8.4f\n\n", time.Since(timeStart).Seconds()))
+
 	return nil
 }
