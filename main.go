@@ -29,7 +29,7 @@ func main() {
 	)
 
 	if len(os.Args) < 4 {
-		fmt.Println("program [algorithm(LIRS|LRU|LRUWSR)] [file] [trace size]...")
+		fmt.Println("program [algorithm(LRU|CFLRU|LRUWSR)] [file] [trace size]...")
 		os.Exit(1)
 	}
 

@@ -11,8 +11,22 @@ Repository Tugas Akhir
 ```
 nim -c [nama program].nim
 ```
-3. Running compile on dataset and choose ```data``` as directory target
+3. Make directory ```data``` in root directory
+
+4. Running compile on dataset and choose ```data``` as directory target
 ```
-./[nama program] [dataset] [output]
+./[nama program] [dataset] ../data/[output]
 ```
-4. Running ```main.go``` and choose one algorithm
+5. Go get module
+```
+go get github.com/petar/GoLLRB
+go get github.com/secnot/orderedmap
+```
+6. Build ```main.go```
+```
+go build main.go
+```
+7. Running ```main``` and choose one algorithm
+```
+./main [algorithm(LRU|CFLRU|LRUWSR)] [file] [trace size]...
+```
