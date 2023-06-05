@@ -9,7 +9,7 @@ Repository Tugas Akhir
 1. Choose dataset
 2. Compile converter ```split_financial.nim``` and ```split_websearch.num``` programs
 ```
-nim -c [nama program].nim
+nim c [nama program].nim
 ```
 3. Make directory ```data``` in root directory
 

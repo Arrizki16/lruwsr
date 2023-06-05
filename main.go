@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"lruwsr/cflru"
+	"lruwsr/lfu"
 	"lruwsr/lru"
 	"lruwsr/lruwsr"
 	"lruwsr/simulator"
@@ -64,6 +65,8 @@ func main() {
 		switch strings.ToLower(algorithm) {
 		case "cflru":
 			simulator = cflru.NewCFLRU(cache)
+		case "lfu":
+			simulator = lfu.NewLFU(cache)
 		case "lru":
 			simulator = lru.NewLRU(cache)
 		case "lruwsr":

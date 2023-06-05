@@ -18,16 +18,18 @@ type (
 	}
 
 	LFU struct {
-		maxlen     int
-		available  int
-		hit        int
-		miss       int
-		pagefault  int
-		writeCount int
-		readCount  int
-		writeCost  float32
-		readCost   float32
-		eraseCost  float32
+		maxlen      int
+		available   int
+		hit         int
+		miss        int
+		pagefault   int
+		writeCount  int
+		readCount   int
+		writeCost   float32
+		readCost    float32
+		eraseCost   float32
+		maxfreq     int
+		lastMinFreq int
 
 		orderedList *orderedmap.OrderedMap
 	}
@@ -45,9 +47,35 @@ func NewLFU(value int) *LFU {
 		writeCost:   0.25,
 		readCost:    0.025,
 		eraseCost:   2,
+		maxfreq:     1000,
+		lastMinFreq: 1,
 		orderedList: orderedmap.NewOrderedMap(),
 	}
 	return lfu
+}
+
+func (lfu *LFU) evicted(data *Node) (minLBA int) {
+	minFreqTemp := -1
+	evictedLBA := 0
+	iter := lfu.orderedList.Iter()
+	for true {
+		for key, _, ok := iter.Next(); ok; key, _, ok = iter.Next() {
+			item, _ := lfu.orderedList.Get(key)
+			node := item.(*Node)
+			fmt.Println("[LOOPING DATA] : ", node.lba, node.op, node.freq)
+			if lfu.lastMinFreq >= node.freq {
+				evictedLBA = node.lba
+				break
+				// return node.lba
+			}
+			if minFreqTemp < node.freq {
+				minFreqTemp = node.freq
+			}
+		}
+		lfu.lastMinFreq = minFreqTemp
+	}
+	fmt.Println("ini adalah evictedLBA : ", evictedLBA)
+	return evictedLBA
 }
 
 func (lfu *LFU) put(data *Node) (exists bool) {
@@ -57,8 +85,12 @@ func (lfu *LFU) put(data *Node) (exists bool) {
 
 	if item, ok := lfu.orderedList.Get(data.lba); ok {
 		lfu.hit++
+
 		node := item.(*Node)
-		node.freq++
+		if node.freq < lfu.maxfreq {
+			node.freq++
+			fmt.Println(data.lba, data.op, node.freq)
+		}
 
 		if ok := lfu.orderedList.MoveLast(data.lba); !ok {
 			fmt.Printf("Failed to move LBA %d to MRU position\n", data.lba)
@@ -75,17 +107,8 @@ func (lfu *LFU) put(data *Node) (exists bool) {
 			lfu.pagefault++
 
 			// Find item with minimum frequency
-			minFreq := -1
-			minLBA := 0
-			iter := lfu.orderedList.Iter()
-			for key, _, ok := iter.Next(); ok; key, _, ok = iter.Next() {
-				item, _ := lfu.orderedList.Get(key)
-				node := item.(*Node)
-				if minFreq == -1 || node.freq < minFreq {
-					minFreq = node.freq
-					minLBA = key.(int)
-				}
-			}
+			minLBA := lfu.evicted(data)
+			fmt.Println("tesmp : ", minLBA)
 
 			// Remove item with minimum frequency
 			lfuItem, _ := lfu.orderedList.Get(minLBA)
@@ -94,6 +117,8 @@ func (lfu *LFU) put(data *Node) (exists bool) {
 			if lfuOp == "W" {
 				lfu.writeCount++
 			}
+			fmt.Println("[DELETED NODE] ", lfuNode.op, lfuNode.lba)
+
 			lfu.orderedList.Delete(minLBA)
 
 			data.freq = 1
@@ -113,6 +138,12 @@ func (lfu *LFU) Get(trace simulator.Trace) (err error) {
 }
 
 func (lfu LFU) PrintToFile(file *os.File, timeStart time.Time) (err error) {
+	iter := lfu.orderedList.IterReverse()
+	for _, value, ok := iter.Next(); ok; _, value, ok = iter.Next() {
+		lruLba := value.(*Node)
+		fmt.Println("[RESULT] : ", lruLba.lba, lruLba.op, lruLba.freq)
+	}
+
 	file.WriteString(fmt.Sprintf("cache size: %d\n", lfu.maxlen))
 	file.WriteString(fmt.Sprintf("cache hit: %d\n", lfu.hit))
 	file.WriteString(fmt.Sprintf("cache miss: %d\n", lfu.miss))
