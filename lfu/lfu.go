@@ -54,19 +54,22 @@ func NewLFU(value int) *LFU {
 	return lfu
 }
 
+// ini menggunakan while daripada for karena ada kemungkinan data paling lastfreq tidak 1
+// meskipun di awal
 func (lfu *LFU) evicted(data *Node) (minLBA int) {
 	minFreqTemp := -1
 	evictedLBA := 0
-	iter := lfu.orderedList.Iter()
-	for true {
+
+OuterLoop:
+	for {
+		iter := lfu.orderedList.Iter()
 		for key, _, ok := iter.Next(); ok; key, _, ok = iter.Next() {
 			item, _ := lfu.orderedList.Get(key)
 			node := item.(*Node)
 			fmt.Println("[LOOPING DATA] : ", node.lba, node.op, node.freq)
 			if lfu.lastMinFreq >= node.freq {
 				evictedLBA = node.lba
-				break
-				// return node.lba
+				break OuterLoop
 			}
 			if minFreqTemp < node.freq {
 				minFreqTemp = node.freq
@@ -74,7 +77,7 @@ func (lfu *LFU) evicted(data *Node) (minLBA int) {
 		}
 		lfu.lastMinFreq = minFreqTemp
 	}
-	fmt.Println("ini adalah evictedLBA : ", evictedLBA)
+
 	return evictedLBA
 }
 
@@ -107,6 +110,16 @@ func (lfu *LFU) put(data *Node) (exists bool) {
 			lfu.pagefault++
 
 			// Find item with minimum frequency
+
+			// ini lama karena ngecek frekuensi sebanyak iterasi jumlah node.
+			// TODO
+			// 1. simpan nilai minFreq dan lakukan cek pada nilai minFreq terakhir
+			// minFreq := -1
+			// minLBA := 0
+			// iter := lfu.orderedList.Iter()
+
+			// 2. ini ditaruh di fungsi luar, ketika hasil udah ketemu  langsung break/return
+			// karena kalau sekarang hasilnya akan looping sampai akhir meskipun udah ketemu
 			minLBA := lfu.evicted(data)
 			fmt.Println("tesmp : ", minLBA)
 
@@ -122,6 +135,7 @@ func (lfu *LFU) put(data *Node) (exists bool) {
 			lfu.orderedList.Delete(minLBA)
 
 			data.freq = 1
+			lfu.lastMinFreq = 1
 			lfu.orderedList.Set(data.lba, data)
 		}
 		return false
@@ -138,6 +152,8 @@ func (lfu *LFU) Get(trace simulator.Trace) (err error) {
 }
 
 func (lfu LFU) PrintToFile(file *os.File, timeStart time.Time) (err error) {
+	// TODO
+	// 1. lakukan pengecekan isi dari cache lfu dari paling depan hingga paling belakang
 	iter := lfu.orderedList.IterReverse()
 	for _, value, ok := iter.Next(); ok; _, value, ok = iter.Next() {
 		lruLba := value.(*Node)

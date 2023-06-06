@@ -6,6 +6,7 @@ import (
 	"log"
 	"lruwsr/cflru"
 	"lruwsr/lfu"
+	"lruwsr/lfu2"
 	"lruwsr/lru"
 	"lruwsr/lruwsr"
 	"lruwsr/simulator"
@@ -67,6 +68,8 @@ func main() {
 			simulator = cflru.NewCFLRU(cache)
 		case "lfu":
 			simulator = lfu.NewLFU(cache)
+		case "lfu2":
+			simulator = lfu2.NewLFU(cache)
 		case "lru":
 			simulator = lru.NewLRU(cache)
 		case "lruwsr":
