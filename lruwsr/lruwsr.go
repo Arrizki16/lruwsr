@@ -76,8 +76,8 @@ func (lru *LRUWSR) reorder(data *Node) {
 					lru.orderedList.Delete(key)
 					return
 				} else if lruLba.accessCount >= lru.coldTreshold {
-					// fmt.Println("movelast : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
-					lruLba.accessCount--
+					// fmt.Println("movelast di reorder : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
+					lruLba.accessCount = 0
 					lru.orderedList.MoveLast(key)
 				}
 			}
@@ -87,14 +87,21 @@ func (lru *LRUWSR) reorder(data *Node) {
 
 func (lru *LRUWSR) decay(data *Node) {
 	// fmt.Println("write operation : ", lru.writeOperation)
+	flag := 0
 	iter := lru.orderedList.IterReverse()
 	for _, value, ok := iter.Next(); ok; _, value, ok = iter.Next() {
 		lruLba := value.(*Node)
+		if !lruLba.dirtypages {
+			continue
+		} else {
+			flag += 1
+		}
+		// fmt.Println("[FLAG] ", flag)
 		// fmt.Println("print decay periods [Before]: ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
 		lruLba.accessCount = lruLba.accessCount / 2
 		// fmt.Println("print decay periods [After]: ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
 	}
-
+	flag = 0
 	lru.writeOperation = 0
 }
 
@@ -122,6 +129,12 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 
 		if lru.writeOperation == lru.decayPeriod {
 			lru.decay(data)
+			// iter := lru.orderedList.IterReverse()
+			// for _, value, ok := iter.Next(); ok; _, value, ok = iter.Next() {
+			// 	lruLba := value.(*Node)
+			// 	fmt.Println("[RESULT] : ", lruLba.lba, lruLba.op, lruLba.accessCount, lruLba.dirtypages)
+			// }
+			// fmt.Println("Jumlah write operation setelah decay : ", lru.writeOperation)
 		}
 
 		return true
@@ -135,6 +148,7 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 		}
 
 		node := &Node{
+			lba:         data.lba,
 			op:          data.op,
 			dirtypages:  data.dirtypages,
 			accessCount: data.accessCount,
@@ -143,10 +157,15 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 		if lru.available > 0 {
 			lru.available--
 			lru.orderedList.Set(data.lba, node)
+			// fmt.Println("masuk : ", data.lba)
 			if lru.writeOperation == lru.decayPeriod {
 				lru.decay(data)
+				// iter := lru.orderedList.IterReverse()
+				// for _, value, ok := iter.Next(); ok; _, value, ok = iter.Next() {
+				// 	lruLba := value.(*Node)
+				// 	fmt.Println("[RESULT] : ", lruLba.lba, lruLba.op, lruLba.accessCount, lruLba.dirtypages)
+				// }
 			}
-			// fmt.Println("masuk : ", data.lba)
 		} else {
 			lru.pagefault++
 			if _, firstValue, ok := lru.orderedList.GetFirst(); ok {
@@ -181,6 +200,12 @@ func (lru *LRUWSR) Get(trace simulator.Trace) (err error) {
 }
 
 func (lru LRUWSR) PrintToFile(file *os.File, timeStart time.Time) (err error) {
+	// iter := lru.orderedList.IterReverse()
+	// for _, value, ok := iter.Next(); ok; _, value, ok = iter.Next() {
+	// 	lruLba := value.(*Node)
+	// 	fmt.Println("[RESULT] : ", lruLba.lba, lruLba.op, lruLba.accessCount, lruLba.dirtypages)
+	// }
+
 	file.WriteString(fmt.Sprintf("cache size: %d\n", lru.maxlen))
 	file.WriteString(fmt.Sprintf("cache hit: %d\n", lru.hit))
 	file.WriteString(fmt.Sprintf("cache miss: %d\n", lru.miss))
