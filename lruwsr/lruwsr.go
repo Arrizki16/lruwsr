@@ -14,12 +14,15 @@ import (
 	"github.com/secnot/orderedmap"
 )
 
+var FLAG = 1
+
 type (
 	Node struct {
 		lba         int
 		op          string
 		accessCount int
 		dirtypages  bool
+		coldFlag    bool
 	}
 
 	LRUWSR struct {
@@ -35,7 +38,7 @@ type (
 		eraseCost      float32
 		coldTreshold   int
 		writeOperation int
-		decayPeriod    int
+		decayPeriod    float32
 		orderedList    *orderedmap.OrderedMap
 	}
 )
@@ -54,13 +57,23 @@ func NewLRUWSR(value int) *LRUWSR {
 		eraseCost:      2,
 		coldTreshold:   1,
 		writeOperation: 0,
-		decayPeriod:    50000,
+		decayPeriod:    2,
 		orderedList:    orderedmap.NewOrderedMap(),
 	}
 	return lru
 }
 
 func (lru *LRUWSR) reorder(data *Node) {
+	// iter := lru.orderedList.Iter()
+	// for key, value, ok := iter.Next(); ok; key, value, ok = iter.Next() {
+	// 	lruLba := value.(*Node)
+	// 	if !lruLba.dirtypages {
+	// 		// fmt.Println("dihapus [clean pages] : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
+	// 		lru.orderedList.Delete(key)
+	// 		return
+	// 	}
+	// }
+
 	for {
 		iter := lru.orderedList.Iter()
 		for key, value, ok := iter.Next(); ok; key, value, ok = iter.Next() {
@@ -69,24 +82,28 @@ func (lru *LRUWSR) reorder(data *Node) {
 				// fmt.Println("dihapus [clean pages] : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
 				lru.orderedList.Delete(key)
 				return
-			} else {
-				if lruLba.accessCount < lru.coldTreshold {
+			}
+
+			if lruLba.accessCount < lru.coldTreshold {
+				if lruLba.coldFlag {
 					// fmt.Println("dihapus [dirty pages] : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
 					lru.writeCount++
 					lru.orderedList.Delete(key)
 					return
-				} else if lruLba.accessCount >= lru.coldTreshold {
-					// fmt.Println("movelast di reorder : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
-					lruLba.accessCount = 0
-					lru.orderedList.MoveLast(key)
+				} else {
+					lruLba.coldFlag = true
 				}
+			} else if lruLba.accessCount >= lru.coldTreshold {
+				// fmt.Println("movelast di reorder : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
+				lruLba.coldFlag = true
+				lruLba.accessCount = lruLba.accessCount - 1
+				lru.orderedList.MoveLast(key)
 			}
 		}
 	}
 }
 
 func (lru *LRUWSR) decay(data *Node) {
-	// fmt.Println("write operation : ", lru.writeOperation)
 	flag := 0
 	iter := lru.orderedList.IterReverse()
 	for _, value, ok := iter.Next(); ok; _, value, ok = iter.Next() {
@@ -98,7 +115,7 @@ func (lru *LRUWSR) decay(data *Node) {
 		}
 		// fmt.Println("[FLAG] ", flag)
 		// fmt.Println("print decay periods [Before]: ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
-		lruLba.accessCount = lruLba.accessCount / 2
+		lruLba.accessCount = lruLba.accessCount - 1
 		// fmt.Println("print decay periods [After]: ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
 	}
 	flag = 0
@@ -106,6 +123,18 @@ func (lru *LRUWSR) decay(data *Node) {
 }
 
 func (lru *LRUWSR) put(data *Node) (exists bool) {
+	// fmt.Println("---------- PUTARAN KE ", FLAG, "----------")
+	// FLAG += 1
+	// fmt.Println("write count : ", lru.writeCount)
+	// fmt.Println("hit ratio : ", lru.hit)
+	// fmt.Println("pagefault : ", lru.pagefault)
+
+	// iter := lru.orderedList.IterReverse()
+	// for _, value, ok := iter.Next(); ok; _, value, ok = iter.Next() {
+	// 	lruLba := value.(*Node)
+	// 	fmt.Println("[RESULT] : ", lruLba.lba, lruLba.op, lruLba.accessCount, lruLba.dirtypages)
+	// }
+
 	if _, _, ok := lru.orderedList.GetLast(); !ok {
 		fmt.Println("LRU cache is empty")
 	}
@@ -115,20 +144,22 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 		lruLba := value.(*Node)
 		if lruLba.op == "W" {
 			lru.writeOperation++
+			lruLba.coldFlag = false
 			if lruLba.accessCount == 0 {
 				lruLba.accessCount = 1
 			} else if lruLba.accessCount < lru.maxlen {
-				lruLba.accessCount++
+				lruLba.accessCount = lruLba.accessCount + 1
 			}
 		}
 
 		// fmt.Println("ketemu ", data.lba, lruLba.accessCount)
-		if ok := lru.orderedList.MoveLast(data.lba); !ok {
+		if ok := lru.orderedList.MoveLast(lruLba.lba); !ok {
 			fmt.Printf("Failed to move LBA %d to MRU position\n", data.lba)
 		}
 
-		if lru.writeOperation == lru.decayPeriod {
-			lru.decay(data)
+		if float32(lru.writeOperation) == lru.decayPeriod*float32(lru.maxlen) {
+			// fmt.Println("kena decay")
+			lru.decay(lruLba)
 			// iter := lru.orderedList.IterReverse()
 			// for _, value, ok := iter.Next(); ok; _, value, ok = iter.Next() {
 			// 	lruLba := value.(*Node)
@@ -145,6 +176,9 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 			data.dirtypages = true
 			data.accessCount = 1
 			lru.writeOperation++
+			data.coldFlag = false
+		} else {
+			data.coldFlag = true
 		}
 
 		node := &Node{
@@ -152,14 +186,16 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 			op:          data.op,
 			dirtypages:  data.dirtypages,
 			accessCount: data.accessCount,
+			coldFlag:    data.coldFlag,
 		}
 
 		if lru.available > 0 {
 			lru.available--
 			lru.orderedList.Set(data.lba, node)
 			// fmt.Println("masuk : ", data.lba)
-			if lru.writeOperation == lru.decayPeriod {
-				lru.decay(data)
+			if float32(lru.writeOperation) == lru.decayPeriod*float32(lru.maxlen) {
+				// fmt.Println("kena decay")
+				lru.decay(node)
 				// iter := lru.orderedList.IterReverse()
 				// for _, value, ok := iter.Next(); ok; _, value, ok = iter.Next() {
 				// 	lruLba := value.(*Node)
@@ -174,7 +210,7 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 					// fmt.Println("dihapus [clean pages] : ", key, lruLba.op, lruLba.dirtypages, lruLba.accessCount)
 					lru.orderedList.PopFirst()
 				} else {
-					lru.reorder(data)
+					lru.reorder(lruLba)
 				}
 			} else {
 				fmt.Println("No elements found to remove")
@@ -182,8 +218,9 @@ func (lru *LRUWSR) put(data *Node) (exists bool) {
 
 			// fmt.Println("masuk udah full : ", data.lba)
 			lru.orderedList.Set(data.lba, node)
-			if lru.writeOperation == lru.decayPeriod {
-				lru.decay(data)
+			if float32(lru.writeOperation) == lru.decayPeriod*float32(lru.maxlen) {
+				// fmt.Println("kena decay")
+				lru.decay(node)
 			}
 		}
 		return false
@@ -206,14 +243,14 @@ func (lru LRUWSR) PrintToFile(file *os.File, timeStart time.Time) (err error) {
 	// 	fmt.Println("[RESULT] : ", lruLba.lba, lruLba.op, lruLba.accessCount, lruLba.dirtypages)
 	// }
 
-	file.WriteString(fmt.Sprintf("cache size: %d\n", lru.maxlen))
-	file.WriteString(fmt.Sprintf("cache hit: %d\n", lru.hit))
-	file.WriteString(fmt.Sprintf("cache miss: %d\n", lru.miss))
-	file.WriteString(fmt.Sprintf("write count: %d\n", lru.writeCount))
-	file.WriteString(fmt.Sprintf("read count: %d\n", lru.readCount))
-	file.WriteString(fmt.Sprintf("hit ratio: %8.4f\n", (float64(lru.hit)/float64(lru.hit+lru.miss))*100))
-	file.WriteString(fmt.Sprintf("runtime: %8.4f\n", float32(lru.readCount)*lru.readCost+float32(lru.writeCount)*(lru.writeCost+lru.eraseCost)))
-	file.WriteString(fmt.Sprintf("time execution: %8.4f\n\n", time.Since(timeStart).Seconds()))
+	fmt.Printf("cache size: %d\n", lru.maxlen)
+	// fmt.Printf("cache hit: %d\n", lru.hit)
+	// fmt.Printf("cache miss: %d\n", lru.miss)
+	fmt.Printf("write count: %d\n", lru.writeCount)
+	// fmt.Printf("read count: %d\n", lru.readCount)
+	fmt.Printf("hit ratio: %8.4f\n\n", (float64(lru.hit)/float64(lru.hit+lru.miss))*100)
+	// fmt.Printf("runtime: %8.4f\n", float32(lru.readCount)*lru.readCost+float32(lru.writeCount)*(lru.writeCost+lru.eraseCost))
+	// fmt.Printf("time execution: %8.4f\n\n", time.Since(timeStart).Seconds())
 
 	return nil
 }

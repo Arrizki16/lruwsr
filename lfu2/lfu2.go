@@ -99,7 +99,7 @@ func (lfu *LFU) put(data *NodeLba) (exists bool) {
 					lba := el.Value.(*NodeLba).lba
 					op := el.Value.(*NodeLba).op
 					if op == "W" {
-						lfu.writeCost++
+						lfu.writeCount++
 					}
 					kk.lba = lba
 					lfu.tlba.Delete(kk)
@@ -127,13 +127,13 @@ func (lfu *LFU) Get(trace simulator.Trace) (err error) {
 }
 
 func (lfu LFU) PrintToFile(file *os.File, timeStart time.Time) (err error) {
-	file.WriteString(fmt.Sprintf("cache size: %d\n", lfu.maxlen))
-	file.WriteString(fmt.Sprintf("cache hit: %d\n", lfu.hit))
-	file.WriteString(fmt.Sprintf("cache miss: %d\n", lfu.miss))
-	file.WriteString(fmt.Sprintf("write count: %d\n", lfu.writeCount))
-	file.WriteString(fmt.Sprintf("read count: %d\n", lfu.readCount))
-	file.WriteString(fmt.Sprintf("hit ratio: %8.4f\n", (float64(lfu.hit)/float64(lfu.hit+lfu.miss))*100))
-	file.WriteString(fmt.Sprintf("runtime: %8.4f\n", float32(lfu.readCount)*lfu.readCost+float32(lfu.writeCount)*(lfu.writeCost+lfu.eraseCost)))
-	file.WriteString(fmt.Sprintf("time execution: %8.4f\n\n", time.Since(timeStart).Seconds()))
+	fmt.Printf("cache size: %d\n", lfu.maxlen)
+	fmt.Printf("cache hit: %d\n", lfu.hit)
+	fmt.Printf("cache miss: %d\n", lfu.miss)
+	fmt.Printf("write count: %d\n", lfu.writeCount)
+	fmt.Printf("read count: %d\n", lfu.readCount)
+	fmt.Printf("hit ratio: %8.4f\n", (float64(lfu.hit)/float64(lfu.hit+lfu.miss))*100)
+	fmt.Printf("runtime: %8.4f\n", float32(lfu.readCount)*lfu.readCost+float32(lfu.writeCount)*(lfu.writeCost+lfu.eraseCost))
+	fmt.Printf("time execution: %8.4f\n\n", time.Since(timeStart).Seconds())
 	return nil
 }
