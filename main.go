@@ -4,9 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"log"
-	"lruwsr/cflru"
 	"lruwsr/lfu"
-	"lruwsr/lfu2"
 	"lruwsr/lru"
 	"lruwsr/lruwsr"
 	"lruwsr/simulator"
@@ -31,7 +29,7 @@ func main() {
 	)
 
 	if len(os.Args) < 4 {
-		fmt.Println("program [algorithm(LRU|CFLRU|LRUWSR)] [file] [trace size]...")
+		fmt.Println("program [algorithm (LFU|LRU|LRUWSR)] [file] [trace size]...")
 		os.Exit(1)
 	}
 
@@ -64,12 +62,8 @@ func main() {
 
 	for _, cache := range cacheList {
 		switch strings.ToLower(algorithm) {
-		case "cflru":
-			simulator = cflru.NewCFLRU(cache)
 		case "lfu":
 			simulator = lfu.NewLFU(cache)
-		case "lfu2":
-			simulator = lfu2.NewLFU(cache)
 		case "lru":
 			simulator = lru.NewLRU(cache)
 		case "lruwsr":
