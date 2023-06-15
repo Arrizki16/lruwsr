@@ -33,19 +33,10 @@ while res:
   for val in items(x.row):
     case num
     of 0:
-      #asu = parseInt(val)
-      #asu = val
-      #if not(asu in [ "0", "1"]):
-        #break
-      #if asu == "2":
-      #  break
-      
-      #if asu!=asureq:
-      #  break
       discard
     of 1:
       lba = parseInt(val)
-      if lba<0: # ini apaan sih ?
+      if lba<0:
         break
     of 2:
       size = parseInt(val)
@@ -57,20 +48,12 @@ while res:
       opcode = val
       for i in countdown(tambah+size,1):
         wr.writeLine(lba, ",", toUpper(opcode))
-        #inc(lba, 8)
         inc(lba, 1)
     else:
       break
     inc(num)
 
-  # ----
   res=readRow(x)
 close(x)
 close(s)
 close(wr)
-
-#stderr.write "line: ", linecounter, ",", opcode, "\n"
-#for i,j in cbz:
-#  stderr.write i ,":", j, "\n"
-
-#echo "not divisible by ", BSIZE, ":", nondivide
