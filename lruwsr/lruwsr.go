@@ -95,7 +95,7 @@ func (lru *LRUWSR) decay(data *Node) {
 	lru.writeOperation = 0
 }
 
-func (lru *LRUWSR) put(data *Node) (exists bool) {
+func (lru *LRUWSR) Put(data *Node) (exists bool) {
 	if value, ok := lru.orderedList.Get(data.lba); ok {
 		lru.hit++
 		lruLba := value.(*Node)
@@ -170,7 +170,7 @@ func (lru *LRUWSR) Get(trace simulator.Trace) (err error) {
 	obj := new(Node)
 	obj.lba = trace.Addr
 	obj.op = trace.Op
-	lru.put(obj)
+	lru.Put(obj)
 
 	return nil
 }

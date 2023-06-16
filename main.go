@@ -29,7 +29,7 @@ func main() {
 	)
 
 	if len(os.Args) < 4 {
-		fmt.Println("program [algorithm (LFU|LRU|LRUWSR)] [file] [trace size]...")
+		fmt.Println("program [algorithm (LFU|LRU|LRUWSR)] [file trace] [cache size]...")
 		os.Exit(1)
 	}
 
@@ -41,7 +41,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	cacheList, err = validateTraceSize(os.Args[3:])
+	cacheList, err = validateCacheSize(os.Args[3:])
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
@@ -86,7 +86,7 @@ func main() {
 	fmt.Println("Done")
 }
 
-func validateTraceSize(tracesize []string) (sizeList []int, err error) {
+func validateCacheSize(tracesize []string) (sizeList []int, err error) {
 	var (
 		cacheList []int
 		cache     int

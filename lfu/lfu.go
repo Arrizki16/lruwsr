@@ -65,7 +65,7 @@ func (x *NodeLba) Less(than llrb.Item) bool {
 	return x.lba < than.(*NodeLba).lba
 }
 
-func (lfu *LFU) put(data *NodeLba) (exists bool) {
+func (lfu *LFU) Put(data *NodeLba) (exists bool) {
 	var el *list.Element
 	kk := new(NodeLba)
 
@@ -120,7 +120,7 @@ func (lfu *LFU) Get(trace simulator.Trace) (err error) {
 	obj.lba = trace.Addr
 	obj.op = trace.Op
 	obj.freq = 1
-	lfu.put(obj)
+	lfu.Put(obj)
 
 	return nil
 }

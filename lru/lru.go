@@ -49,7 +49,7 @@ func NewLRU(value int) *LRU {
 	return lru
 }
 
-func (lru *LRU) put(data *Node) (exists bool) {
+func (lru *LRU) Put(data *Node) (exists bool) {
 	if _, ok := lru.orderedList.Get(data.lba); ok {
 		lru.hit++
 
@@ -90,7 +90,7 @@ func (lru *LRU) Get(trace simulator.Trace) (err error) {
 	obj := new(Node)
 	obj.lba = trace.Addr
 	obj.op = trace.Op
-	lru.put(obj)
+	lru.Put(obj)
 
 	return nil
 }
