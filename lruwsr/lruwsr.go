@@ -51,13 +51,15 @@ func NewLRUWSR(value int) *LRUWSR {
 		eraseCost:      2,
 		coldTreshold:   1,
 		writeOperation: 0,
-		decayPeriod:    1.25,
+		decayPeriod:    2,
 		orderedList:    orderedmap.NewOrderedMap(),
 	}
 	return lru
 }
 
 func (lru *LRUWSR) reorder(data *Node) {
+	min := 999
+	flag := 999
 	for {
 		iter := lru.orderedList.Iter()
 		for key, value, ok := iter.Next(); ok; key, value, ok = iter.Next() {
@@ -66,7 +68,10 @@ func (lru *LRUWSR) reorder(data *Node) {
 				lru.orderedList.Delete(key)
 				return
 			}
-			if lruLba.accessCount < lru.coldTreshold {
+			if flag > lruLba.accessCount {
+				flag = lruLba.accessCount
+			}
+			if lruLba.accessCount < lru.coldTreshold || lruLba.accessCount == min {
 				if lruLba.coldFlag {
 					lru.writeCount++
 					lru.orderedList.Delete(key)
@@ -77,10 +82,11 @@ func (lru *LRUWSR) reorder(data *Node) {
 				}
 			} else if lruLba.accessCount >= lru.coldTreshold {
 				lruLba.coldFlag = true
-				lruLba.accessCount = lruLba.accessCount - 1
+				// lruLba.accessCount = lruLba.access	Count - 1
 				lru.orderedList.MoveLast(key)
 			}
 		}
+		min = flag
 	}
 }
 
@@ -91,7 +97,7 @@ func (lru *LRUWSR) decay(data *Node) {
 		if !lruLba.dirtypages {
 			continue
 		}
-		lruLba.accessCount = lruLba.accessCount / 2
+		lruLba.accessCount = lruLba.accessCount - 1
 	}
 	lru.writeOperation = 0
 }
