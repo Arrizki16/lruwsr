@@ -73,6 +73,7 @@ func (lru *LRUWSR) reorder(data *Node) {
 					return
 				} else {
 					lruLba.coldFlag = true
+					lru.orderedList.MoveLast(key)
 				}
 			} else if lruLba.accessCount >= lru.coldTreshold {
 				lruLba.coldFlag = true
